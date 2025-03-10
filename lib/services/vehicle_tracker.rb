@@ -57,7 +57,7 @@ class VehicleTracker
   # Check if a vehicle exited the parking complex recently
   # @param vehicle [Vehicle] The vehicle to check
   # @param check_time [Time] The time to check against
-  # @param window_hours [Integer] The time window in hours
+  # @param window_hours [Integer, Float] The time window in hours (default: 1)
   # @return [Boolean] true if the vehicle exited within the specified time window, false otherwise
   def recently_exited?(vehicle, check_time, window_hours = 1)
     return false unless @exit_times.key?(vehicle.id)
@@ -86,6 +86,20 @@ class VehicleTracker
   # @return [Array<ParkingTicket>] Array of all tickets for the vehicle (empty if none)
   def get_tickets_history(vehicle)
     @vehicle_history[vehicle.id] || []
+  end
+
+  # Get the most recent exit time for a vehicle
+  # @param vehicle [Vehicle] The vehicle to get the exit time for
+  # @return [Time, nil] The most recent exit time, or nil if the vehicle has never exited
+  def get_last_exit_time(vehicle)
+    @exit_times[vehicle.id]
+  end
+
+  # Check if this would be the first time the vehicle is parking
+  # @param vehicle [Vehicle] The vehicle to check
+  # @return [Boolean] true if the vehicle has never been parked before, false otherwise
+  def first_time_parking?(vehicle)
+    !@vehicle_history.key?(vehicle.id) || @vehicle_history[vehicle.id].empty?
   end
 
   private
