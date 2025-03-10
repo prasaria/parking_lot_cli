@@ -25,6 +25,9 @@ class FeeCalculator
   # Maximum hours covered by the base rate
   BASE_RATE_HOURS = 3
 
+  # Hours in a day for calculating daily rates
+  HOURS_PER_DAY = 24
+
   # Calculate the parking fee for a ticket
   # @param ticket [ParkingTicket] The parking ticket to calculate the fee for
   # @return [Integer] The calculated fee in pesos
@@ -32,19 +35,22 @@ class FeeCalculator
   def calculate_fee(ticket)
     validate_ticket(ticket)
 
-    # For now, just implement the base rate and hourly rate calculation
-    # Duration is already rounded up to the nearest hour in the ticket
+    # Get duration in hours (already rounded up)
     duration_hours = ticket.duration_in_hours
 
-    # If duration is less than or equal to the base rate hours, return the base rate
-    return BASE_RATE if duration_hours <= BASE_RATE_HOURS
+    # Calculate days and remainder hours
+    days, remainder_hours = duration_hours.divmod(HOURS_PER_DAY)
 
-    # For durations exceeding the base rate hours, calculate additional hourly charges
-    excess_hours = duration_hours - BASE_RATE_HOURS
-    hourly_rate = get_hourly_rate(ticket.slot)
+    # If there are complete days, apply the daily rate
+    if days.positive?
+      daily_fee = days * DAILY_RATE
+      # Add fees for any remainder hours
+      remainder_fee = calculate_remainder_fee(remainder_hours, ticket.slot)
+      return daily_fee + remainder_fee
+    end
 
-    # Calculate and return total fee
-    BASE_RATE + (excess_hours * hourly_rate)
+    # Otherwise, just calculate based on hourly rates
+    calculate_hourly_fee(duration_hours, ticket.slot)
   end
 
   private
@@ -58,6 +64,34 @@ class FeeCalculator
     elsif ticket.active?
       raise ArgumentError, 'Cannot calculate fee for active ticket'
     end
+  end
+
+  # Calculate fee for hours that don't constitute a full day
+  # @param hours [Integer] Number of hours
+  # @param slot [ParkingSlot] The parking slot
+  # @return [Integer] The fee for the given hours
+  def calculate_hourly_fee(hours, slot)
+    # If duration is less than or equal to the base rate hours, return the base rate
+    return BASE_RATE if hours <= BASE_RATE_HOURS
+
+    # For durations exceeding the base rate hours, calculate additional hourly charges
+    excess_hours = hours - BASE_RATE_HOURS
+    hourly_rate = get_hourly_rate(slot)
+
+    # Calculate and return total fee
+    BASE_RATE + (excess_hours * hourly_rate)
+  end
+
+  # Calculate fee for remainder hours after complete days
+  # @param remainder_hours [Integer] Number of remainder hours
+  # @param slot [ParkingSlot] The parking slot
+  # @return [Integer] The fee for the remainder hours
+  def calculate_remainder_fee(remainder_hours, slot)
+    # If there are no remainder hours, return 0
+    return 0 if remainder_hours.zero?
+
+    # Otherwise, calculate fee based on the remainder hours
+    calculate_hourly_fee(remainder_hours, slot)
   end
 
   # Get the hourly rate based on the slot size
