@@ -8,7 +8,7 @@ coverage:
 	open coverage/index.html
 
 lint:
-	bundle exec rubocop
+	bundle exec rubocop -A
 
 run:
 	./main.rb
