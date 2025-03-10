@@ -47,6 +47,12 @@ class VehicleTracker
     @currently_parked.key?(vehicle.id)
   end
 
+  # Get the count of currently parked vehicles
+  # @return [Integer] The number of vehicles currently parked
+  def currently_parked_count
+    @currently_parked.size
+  end
+
   # Get the active ticket for a parked vehicle
   # @param vehicle [Vehicle] The vehicle to get the ticket for
   # @return [ParkingTicket, nil] The active ticket if the vehicle is parked, nil otherwise
