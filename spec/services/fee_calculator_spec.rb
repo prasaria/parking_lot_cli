@@ -228,6 +228,129 @@ RSpec.describe FeeCalculator do
     end
   end
 
+  describe '24-hour rate calculation' do
+    context 'with exactly 24 hours' do
+      let(:vehicle) { SmallVehicle.new('S123') }
+      let(:slot) { SmallParkingSlot.new(1, [3, 5, 7]) }
+
+      it 'charges 5000 pesos flat rate for 24 hours' do
+        entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        exit_time = entry_time + (24 * 3600) # Exactly 24 hours later
+        ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+        expect(calculator.calculate_fee(ticket)).to eq(5000)
+      end
+    end
+
+    context 'with multiple complete 24-hour periods' do
+      let(:vehicle) { SmallVehicle.new('S123') }
+      let(:slot) { SmallParkingSlot.new(1, [3, 5, 7]) }
+
+      it 'charges 10000 pesos for 48 hours (2 complete days)' do
+        entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        exit_time = entry_time + (48 * 3600) # 48 hours later
+        ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+        # 2 days * 5000 = 10000
+        expect(calculator.calculate_fee(ticket)).to eq(10_000)
+      end
+
+      it 'charges 15000 pesos for 72 hours (3 complete days)' do
+        entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        exit_time = entry_time + (72 * 3600) # 72 hours later
+        ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+        # 3 days * 5000 = 15000
+        expect(calculator.calculate_fee(ticket)).to eq(15_000)
+      end
+    end
+
+    context 'with 24-hour periods plus remainder hours' do
+      context 'in a small slot (SP)' do
+        let(:vehicle) { SmallVehicle.new('S123') }
+        let(:slot) { SmallParkingSlot.new(1, [3, 5, 7]) }
+
+        it 'charges daily rate plus base rate for 24 hours + 3 hours' do
+          entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+          exit_time = entry_time + (27 * 3600) # 27 hours later
+          ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+          # 1 day * 5000 + base rate 40 = 5040
+          expect(calculator.calculate_fee(ticket)).to eq(5040)
+        end
+
+        it 'charges daily rate plus hourly rate for 24 hours + 4 hours' do
+          entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+          exit_time = entry_time + (28 * 3600) # 28 hours later
+          ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+          # 1 day * 5000 + base rate 40 + 1 hour * 20 = 5060
+          expect(calculator.calculate_fee(ticket)).to eq(5060)
+        end
+      end
+
+      context 'in a medium slot (MP)' do
+        let(:vehicle) { MediumVehicle.new('M456') }
+        let(:slot) { MediumParkingSlot.new(2, [4, 2, 6]) }
+
+        it 'charges daily rate plus hourly rate for 48 hours + 5 hours' do
+          entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+          exit_time = entry_time + (53 * 3600) # 53 hours later
+          ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+          # 2 days * 5000 + base rate 40 + 2 hours * 60 = 10160
+          expect(calculator.calculate_fee(ticket)).to eq(10_160)
+        end
+      end
+
+      context 'in a large slot (LP)' do
+        let(:vehicle) { LargeVehicle.new('L789') }
+        let(:slot) { LargeParkingSlot.new(3, [5, 3, 4]) }
+
+        it 'charges daily rate plus hourly rate for 72 hours + 6 hours' do
+          entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+          exit_time = entry_time + (78 * 3600) # 78 hours later
+          ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+          # 3 days * 5000 + base rate 40 + 3 hours * 100 = 15340
+          expect(calculator.calculate_fee(ticket)).to eq(15_340)
+        end
+      end
+    end
+
+    context 'with edge cases for 24-hour rate calculation' do
+      let(:vehicle) { SmallVehicle.new('S123') }
+      let(:slot) { SmallParkingSlot.new(1, [3, 5, 7]) }
+
+      it 'handles just under 24 hours correctly (hourly rate applies)' do
+        entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        exit_time = entry_time + (23.9 * 3600) # 23.9 hours later - rounds up to 24
+        ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+        # Exactly 24 hours flat rate
+        expect(calculator.calculate_fee(ticket)).to eq(5000)
+      end
+
+      it 'handles just over 24 hours correctly (daily + base rate applies)' do
+        entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        exit_time = entry_time + (24.1 * 3600) # 24.1 hours later - rounds up to 25
+        ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+        # 1 day * 5000 + base rate 40 = 5040
+        expect(calculator.calculate_fee(ticket)).to eq(5040)
+      end
+
+      it 'handles very long durations correctly' do
+        entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        exit_time = entry_time + (240 * 3600) # 240 hours (10 days) later
+        ticket = create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
+
+        # 10 days * 5000 = 50000
+        expect(calculator.calculate_fee(ticket)).to eq(50_000)
+      end
+    end
+  end
+
   # Helper method to create a ticket with entry and exit times
   def create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
     ticket = ParkingTicket.new(vehicle, slot, entry_point, entry_time)
