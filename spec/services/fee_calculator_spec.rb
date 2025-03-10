@@ -351,6 +351,162 @@ RSpec.describe FeeCalculator do
     end
   end
 
+  describe 'continuous rate application' do
+    let(:vehicle) { SmallVehicle.new('S123') }
+    let(:small_slot1) { SmallParkingSlot.new(1, [3, 5, 7]) }
+    let(:small_slot2) { SmallParkingSlot.new(2, [2, 6, 4]) }
+
+    context 'with vehicle returning within one hour to the same slot type' do
+      it 'applies continuous rate for short initial stay followed by return within 1 hour' do
+        # First visit: 1 hour
+        first_entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        first_exit_time = first_entry_time + (1 * 3600) # 1 hour later
+        first_ticket = create_ticket(vehicle, small_slot1, entry_point, first_entry_time, first_exit_time)
+
+        # Second visit: Returns 30 minutes later, stays for 3 more hours
+        second_entry_time = first_exit_time + (30 * 60) # 30 minutes after first exit
+        second_exit_time = second_entry_time + (3 * 3600) # 3 hours later
+        second_ticket = create_ticket(vehicle, small_slot2, entry_point, second_entry_time, second_exit_time)
+
+        # Total time: 1 hour + 0.5 hour gap + 3 hours = 4.5 hours of parking (rounds to 5)
+        # Expect: Base rate (40) + 2 hours at small slot rate (2 * 20) = 80 pesos
+        expect(calculator.calculate_fee_with_continuous_rate(first_ticket, second_ticket)).to eq(80)
+      end
+
+      it 'applies continuous rate for longer stay with return within 1 hour' do
+        # First visit: 3 hours (just the base rate)
+        first_entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        first_exit_time = first_entry_time + (3 * 3600) # 3 hours later
+        first_ticket = create_ticket(vehicle, small_slot1, entry_point, first_entry_time, first_exit_time)
+
+        # Second visit: Returns 45 minutes later, stays for 2 more hours
+        second_entry_time = first_exit_time + (45 * 60) # 45 minutes after first exit
+        second_exit_time = second_entry_time + (2 * 3600) # 2 hours later
+        second_ticket = create_ticket(vehicle, small_slot2, entry_point, second_entry_time, second_exit_time)
+
+        # Total time: 3 hours + 0.75 hour gap + 2 hours = 5.75 hours of parking (rounds to 6)
+        # Expect: Base rate (40) + 3 hours at small slot rate (3 * 20) = 100 pesos
+        expect(calculator.calculate_fee_with_continuous_rate(first_ticket, second_ticket)).to eq(100)
+      end
+    end
+
+    context 'with vehicle returning within one hour to a different slot type' do
+      let(:medium_slot) { MediumParkingSlot.new(3, [4, 3, 5]) }
+
+      it 'applies continuous rate with rate change when slot type changes' do
+        # First visit: 2 hours in a small slot
+        first_entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        first_exit_time = first_entry_time + (2 * 3600) # 2 hours later
+        first_ticket = create_ticket(vehicle, small_slot1, entry_point, first_entry_time, first_exit_time)
+
+        # Second visit: Returns 30 minutes later, parks in medium slot for 2 more hours
+        second_entry_time = first_exit_time + (30 * 60) # 30 minutes after first exit
+        second_exit_time = second_entry_time + (2 * 3600) # 2 hours later
+        second_ticket = create_ticket(vehicle, medium_slot, entry_point, second_entry_time, second_exit_time)
+
+        # Total time: 2 hours in SP + 0.5 hour gap + 2 hours in MP = 4.5 hours (rounds to 5)
+        # First 3 hours: Base rate (40)
+        # Next 2 hours: Medium slot rate (2 * 60) = 120
+        # Total: 40 + 120 = 160 pesos
+        expect(calculator.calculate_fee_with_continuous_rate(first_ticket, second_ticket)).to eq(160)
+      end
+    end
+
+    context 'with vehicle returning after more than one hour' do
+      it 'calculates separate fees for each ticket' do
+        # First visit: 2 hours
+        first_entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        first_exit_time = first_entry_time + (2 * 3600) # 2 hours later
+        first_ticket = create_ticket(vehicle, small_slot1, entry_point, first_entry_time, first_exit_time)
+
+        # Second visit: Returns 90 minutes later (more than 1 hour), stays for 2 more hours
+        second_entry_time = first_exit_time + (90 * 60) # 90 minutes after first exit
+        second_exit_time = second_entry_time + (2 * 3600) # 2 hours later
+        second_ticket = create_ticket(vehicle, small_slot2, entry_point, second_entry_time, second_exit_time)
+
+        # Should calculate fees separately
+        # First ticket: 2 hours = Base rate (40)
+        # Second ticket: 2 hours = Base rate (40)
+        # Total: 40 + 40 = 80 pesos
+        expect(calculator.calculate_fee_with_continuous_rate(first_ticket, second_ticket)).to eq(80)
+      end
+    end
+
+    context 'with multiple continuous rate applications' do
+      it 'handles three consecutive tickets within continuous rate window' do
+        # First visit: 1 hour
+        first_entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        first_exit_time = first_entry_time + (1 * 3600) # 1 hour later
+        first_ticket = create_ticket(vehicle, small_slot1, entry_point, first_entry_time, first_exit_time)
+
+        # Second visit: Returns 30 minutes later, stays for 1 hour
+        second_entry_time = first_exit_time + (30 * 60) # 30 minutes after first exit
+        second_exit_time = second_entry_time + (1 * 3600) # 1 hour later
+        second_ticket = create_ticket(vehicle, small_slot2, entry_point, second_entry_time, second_exit_time)
+
+        # Third visit: Returns 45 minutes later, stays for 2 hours
+        third_entry_time = second_exit_time + (45 * 60) # 45 minutes after second exit
+        third_exit_time = third_entry_time + (2 * 3600) # 2 hours later
+        third_ticket = create_ticket(vehicle, small_slot1, entry_point, third_entry_time, third_exit_time)
+
+        # Total time: 1 + 0.5 gap + 1 + 0.75 gap + 2 = 5.25 hours (rounds to 6)
+        # Expect: Base rate (40) + 3 hours at small slot rate (3 * 20) = 100 pesos
+        expect(calculator.calculate_fee_with_continuous_rate([first_ticket, second_ticket, third_ticket])).to eq(100)
+      end
+    end
+
+    context 'with edge cases' do
+      it 'handles exactly 1 hour return window' do
+        # First visit: 2 hours
+        first_entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        first_exit_time = first_entry_time + (2 * 3600) # 2 hours later
+        first_ticket = create_ticket(vehicle, small_slot1, entry_point, first_entry_time, first_exit_time)
+
+        # Second visit: Returns exactly 1 hour later, stays for 2 more hours
+        second_entry_time = first_exit_time + (60 * 60) # 60 minutes after first exit
+        second_exit_time = second_entry_time + (2 * 3600) # 2 hours later
+        second_ticket = create_ticket(vehicle, small_slot2, entry_point, second_entry_time, second_exit_time)
+
+        # Total time: 2 hours + 1 hour gap + 2 hours = 5 hours
+        # Expect: Base rate (40) + 2 hours at small slot rate (2 * 20) = 80 pesos
+        expect(calculator.calculate_fee_with_continuous_rate(first_ticket, second_ticket)).to eq(80)
+      end
+
+      it 'handles just over 1 hour return window' do
+        # First visit: 2 hours
+        first_entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        first_exit_time = first_entry_time + (2 * 3600) # 2 hours later
+        first_ticket = create_ticket(vehicle, small_slot1, entry_point, first_entry_time, first_exit_time)
+
+        # Second visit: Returns just over 1 hour later, stays for 2 more hours
+        second_entry_time = first_exit_time + (61 * 60) # 61 minutes after first exit
+        second_exit_time = second_entry_time + (2 * 3600) # 2 hours later
+        second_ticket = create_ticket(vehicle, small_slot2, entry_point, second_entry_time, second_exit_time)
+
+        # Should calculate fees separately
+        # First ticket: 2 hours = Base rate (40)
+        # Second ticket: 2 hours = Base rate (40)
+        # Total: 40 + 40 = 80 pesos
+        expect(calculator.calculate_fee_with_continuous_rate(first_ticket, second_ticket)).to eq(80)
+      end
+
+      it 'calculates a single ticket correctly' do
+        # Just one visit: 2 hours
+        entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+        exit_time = entry_time + (2 * 3600) # 2 hours later
+        ticket = create_ticket(vehicle, small_slot1, entry_point, entry_time, exit_time)
+
+        # Should just use the regular fee calculation
+        # 2 hours = Base rate (40)
+        expect(calculator.calculate_fee_with_continuous_rate(ticket)).to eq(40)
+      end
+
+      it 'handles nil tickets gracefully' do
+        expect { calculator.calculate_fee_with_continuous_rate(nil) }.to raise_error(ArgumentError)
+      end
+    end
+  end
+
   # Helper method to create a ticket with entry and exit times
   def create_ticket(vehicle, slot, entry_point, entry_time, exit_time)
     ticket = ParkingTicket.new(vehicle, slot, entry_point, entry_time)
