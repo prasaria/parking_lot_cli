@@ -32,15 +32,19 @@ class FeeCalculator
   def calculate_fee(ticket)
     validate_ticket(ticket)
 
-    # For now, just implement the base rate calculation
+    # For now, just implement the base rate and hourly rate calculation
     # Duration is already rounded up to the nearest hour in the ticket
     duration_hours = ticket.duration_in_hours
 
     # If duration is less than or equal to the base rate hours, return the base rate
     return BASE_RATE if duration_hours <= BASE_RATE_HOURS
 
-    # Future implementation will handle hourly and daily rates
-    BASE_RATE
+    # For durations exceeding the base rate hours, calculate additional hourly charges
+    excess_hours = duration_hours - BASE_RATE_HOURS
+    hourly_rate = get_hourly_rate(ticket.slot)
+
+    # Calculate and return total fee
+    BASE_RATE + (excess_hours * hourly_rate)
   end
 
   private
@@ -54,5 +58,12 @@ class FeeCalculator
     elsif ticket.active?
       raise ArgumentError, 'Cannot calculate fee for active ticket'
     end
+  end
+
+  # Get the hourly rate based on the slot size
+  # @param slot [ParkingSlot] The parking slot
+  # @return [Integer] The hourly rate in pesos
+  def get_hourly_rate(slot)
+    HOURLY_RATES[slot.size]
   end
 end
