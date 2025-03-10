@@ -102,6 +102,58 @@ RSpec.describe VehicleTracker do
     end
   end
 
+  describe '#currently_parked_count' do
+    it 'returns 0 when no vehicles are parked' do
+      expect(tracker.currently_parked_count).to eq(0)
+    end
+
+    it 'returns the correct count of parked vehicles' do
+      # Park 3 vehicles
+      entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+      vehicle1 = SmallVehicle.new('V1')
+      vehicle2 = MediumVehicle.new('V2')
+      vehicle3 = LargeVehicle.new('V3')
+
+      ticket1 = ParkingTicket.new(vehicle1, slot, entry_point, entry_time)
+      ticket2 = ParkingTicket.new(vehicle2, slot, entry_point, entry_time)
+      ticket3 = ParkingTicket.new(vehicle3, slot, entry_point, entry_time)
+
+      tracker.track_vehicle_entry(ticket1)
+      tracker.track_vehicle_entry(ticket2)
+      tracker.track_vehicle_entry(ticket3)
+
+      expect(tracker.currently_parked_count).to eq(3)
+    end
+
+    it 'updates the count when vehicles exit' do
+      entry_time = Time.new(2023, 6, 10, 10, 0, 0)
+      exit_time = entry_time + (2 * 3600) # 2 hours later
+      # Park 2 vehicles
+      vehicle1 = SmallVehicle.new('V1')
+      vehicle2 = MediumVehicle.new('V2')
+
+      ticket1 = ParkingTicket.new(vehicle1, slot, entry_point, entry_time)
+      ticket2 = ParkingTicket.new(vehicle2, slot, entry_point, entry_time)
+
+      tracker.track_vehicle_entry(ticket1)
+      tracker.track_vehicle_entry(ticket2)
+
+      expect(tracker.currently_parked_count).to eq(2)
+
+      # One vehicle exits
+      ticket1.exit_time = exit_time
+      tracker.track_vehicle_exit(ticket1)
+
+      expect(tracker.currently_parked_count).to eq(1)
+
+      # Second vehicle exits
+      ticket2.exit_time = exit_time
+      tracker.track_vehicle_exit(ticket2)
+
+      expect(tracker.currently_parked_count).to eq(0)
+    end
+  end
+
   describe '#get_active_ticket' do
     it 'returns the active ticket for a parked vehicle' do
       entry_time = Time.new(2023, 6, 10, 10, 0, 0)
