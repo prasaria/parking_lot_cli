@@ -99,9 +99,7 @@ class ParkingSlot
   # @param distances [Array] The distances to validate
   # @raise [ArgumentError] If the distances are not properly formatted
   def validate_distances(distances)
-    unless distances.is_a?(Array)
-      raise ArgumentError, "Distances must be an array, got #{distances.class}"
-    end
+    raise ArgumentError, "Distances must be an array, got #{distances.class}" unless distances.is_a?(Array)
 
     raise ArgumentError, 'Distances array cannot be empty' if distances.empty?
 

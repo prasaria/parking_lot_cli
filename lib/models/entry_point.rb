@@ -19,9 +19,7 @@ class EntryPoint
   # @return [Integer] -1, 0, or 1
   # @raise [ArgumentError] If other is not an EntryPoint
   def <=>(other)
-    unless other.is_a?(EntryPoint)
-      raise ArgumentError, "Comparison of EntryPoint with #{other.class} failed"
-    end
+    raise ArgumentError, "Comparison of EntryPoint with #{other.class} failed" unless other.is_a?(EntryPoint)
 
     id <=> other.id
   end
@@ -64,9 +62,7 @@ class EntryPoint
       raise ArgumentError, "Entry point ID must be numeric, got: #{id.inspect}"
     end
 
-    if numeric_id.negative?
-      raise ArgumentError, "Entry point ID must be non-negative, got: #{numeric_id}"
-    end
+    raise ArgumentError, "Entry point ID must be non-negative, got: #{numeric_id}" if numeric_id.negative?
 
     numeric_id
   end
