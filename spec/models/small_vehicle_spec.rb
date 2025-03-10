@@ -78,4 +78,18 @@ RSpec.describe SmallVehicle do
       expect(small_vehicle).to eq(medium_vehicle)
     end
   end
+
+  describe 'behavior with invalid input' do
+    it 'handles nil slot gracefully' do
+      expect { vehicle.can_park_in?(nil) }.to raise_error(NoMethodError)
+    end
+
+    it 'handles slot with missing size property' do
+      # Create a double that will raise NoMethodError when size is called
+      invalid_slot = double('InvalidSlot')
+      allow(invalid_slot).to receive(:size).and_raise(NoMethodError)
+
+      expect { vehicle.can_park_in?(invalid_slot) }.to raise_error(NoMethodError)
+    end
+  end
 end
