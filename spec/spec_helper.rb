@@ -102,5 +102,5 @@ RSpec.configure do |config|
   #   Kernel.srand config.seed
 end
 
-Add lib to load path
+# Add lib to load path
 $LOAD_PATH.unshift(File.join(File.dirname(__FILE__), '..', 'lib'))
