@@ -15,7 +15,9 @@ class SmallVehicle < Vehicle
   # According to the requirements, small vehicles can park in any slot type
   # @param slot [ParkingSlot] The parking slot to check
   # @return [Boolean] Always returns true for small vehicles
-  def can_park_in?(_slot)
+  def can_park_in?(slot)
+    # Ensure the slot has a size property (will raise NoMethodError if not)
+    slot.size
     true # Small vehicles can park in any type of slot
   end
 end
