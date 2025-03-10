@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 # lib/models/vehicle.rb
 
 # The Vehicle class represents a vehicle that can park in the parking complex.

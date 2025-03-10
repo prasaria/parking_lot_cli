@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 require 'spec_helper'
 require 'models/small_vehicle'
 require 'models/parking_slot' # We'll need this for testing can_park_in?
