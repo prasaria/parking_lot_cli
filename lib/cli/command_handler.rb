@@ -3,6 +3,7 @@
 require 'models/small_vehicle'
 require 'models/medium_vehicle'
 require 'models/large_vehicle'
+require 'time'
 
 # Handles parsing and executing CLI commands for the parking system
 class CommandHandler # rubocop:disable Metrics/ClassLength
@@ -61,7 +62,7 @@ class CommandHandler # rubocop:disable Metrics/ClassLength
   # @param command_str [String] The raw command string
   # @return [Hash] Command result
   def handle_direct_command(command_str)
-    case command_str.strip.downcase
+    case command_str.to_s.strip.downcase
     when 'help'
       execute_help
     when 'exit'
@@ -150,6 +151,7 @@ class CommandHandler # rubocop:disable Metrics/ClassLength
     when 'small' then SmallVehicle.new(id)
     when 'medium' then MediumVehicle.new(id)
     when 'large' then LargeVehicle.new(id)
+    else nil # rubocop:disable Style/EmptyElse
     end
   end
 
@@ -166,6 +168,9 @@ class CommandHandler # rubocop:disable Metrics/ClassLength
       Entry Point: #{ticket.entry_point.id}
       Entry Time: #{ticket.entry_time}
     MESSAGE
+
+    # Add continuous rate info if applicable
+    message += "\nContinuous rate applies (previous parking session detected)" if ticket.previous_ticket
 
     { success: true, message: message }
   end
@@ -223,6 +228,9 @@ class CommandHandler # rubocop:disable Metrics/ClassLength
       Duration: #{duration_hours} hours
       Fee: #{ticket.fee} pesos
     MESSAGE
+
+    # Add continuous rate info if applicable
+    message += "\nContinuous rate applied (connected to previous parking session)" if ticket.previous_ticket
 
     { success: true, message: message }
   end
