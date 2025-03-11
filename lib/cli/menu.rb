@@ -65,30 +65,51 @@ class Menu
 
     while running?
       display_prompt
-      command = @input.gets&.chomp
+      command = read_command
 
+      # Break out of the loop if command is nil (EOF)
       break unless command
 
       process_command(command)
     end
 
+    # Display goodbye message when exiting
     @output.puts("\nThank you for using the Parking System. Goodbye!\n")
   end
 
   private
 
+  # Read a command from the input stream
+  # @return [String, nil] The command string or nil if EOF
+  def read_command
+    input = @input.gets
+    return nil unless input
+
+    input.chomp
+  end
+
   # Process a command
   # @param command [String] The command to process
-  def process_command(command)
+  def process_command(command) # rubocop:disable Metrics/MethodLength
+    # Normalize the command by trimming whitespace
+    normalized_command = command.strip
+
+    # Handle empty commands
+    if normalized_command.empty?
+      @output.puts(formatter.format_error('Invalid command. Type \'help\' for available commands.'))
+      return
+    end
+
     # Process exit command directly
-    if command.strip.downcase == 'exit'
+    if normalized_command.downcase == 'exit'
       stop
       return
     end
 
     # Process all other commands
-    result = @command_handler.execute_command(command)
+    result = @command_handler.execute_command(normalized_command)
 
+    # Display the result
     if result[:success]
       @output.puts("\n#{result[:message]}")
     else
