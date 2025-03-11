@@ -10,6 +10,10 @@ require 'models/entry_point'
 require 'models/small_parking_slot'
 require 'models/medium_parking_slot'
 require 'models/large_parking_slot'
+require 'models/small_vehicle'
+require 'models/medium_vehicle'
+require 'models/large_vehicle'
+require 'models/parking_ticket'
 require 'services/parking_allocator'
 require 'services/fee_calculator'
 require 'services/vehicle_tracker'
@@ -26,6 +30,11 @@ class ParkingSystem
   # @param input [IO] Input stream (defaults to STDIN)
   # @param output [IO] Output stream (defaults to STDOUT)
   def initialize(input: $stdin, output: $stdout)
+    @output = output
+
+    # Print initialization message
+    @output.puts 'Initializing Parking System...'
+
     # Setup the parking complex with all components
     @parking_complex = setup_parking_complex
 
@@ -33,11 +42,26 @@ class ParkingSystem
     @command_handler = CommandHandler.new(@parking_complex)
     @formatter = Formatter.new
     @menu = Menu.new(@command_handler, @formatter, input: input, output: output)
+
+    # Print initialization complete message
+    @output.puts 'Initialization complete!'
   end
 
   # Start the parking system
   def start
-    @menu.start
+    begin
+      @menu.start
+    rescue Interrupt
+      # Handle Ctrl+C gracefully
+      @output.puts "\nInterrupted. Exiting the parking system."
+    rescue StandardError => e
+      # Handle unexpected errors
+      @output.puts "\nAn error occurred: #{e.message}"
+      @output.puts e.backtrace if ENV['DEBUG']
+    end
+
+    # Always print exit message
+    @output.puts 'Thank you for using the Parking System.'
   end
 
   private
@@ -72,13 +96,15 @@ class ParkingSystem
   # @param count [Integer] Number of entry points to create
   # @return [Array<EntryPoint>] Array of entry points
   def setup_entry_points(count)
+    @output.puts "Setting up #{count} entry points..."
     (0...count).map { |i| EntryPoint.new(i) }
   end
 
   # Setup parking slots with distances from entry points
   # @param entry_points [Array<EntryPoint>] The entry points
   # @return [Array<ParkingSlot>] Array of parking slots
-  def setup_parking_slots(_entry_points)
+  def setup_parking_slots(_entry_points) # rubocop:disable Metrics/AbcSize,Metrics/MethodLength
+    @output.puts 'Setting up parking slots...'
     slots = []
 
     # Create small parking slots
@@ -93,18 +119,20 @@ class ParkingSystem
     slots << LargeParkingSlot.new(5, [6, 1, 5])
     slots << LargeParkingSlot.new(6, [7, 4, 2])
 
+    @output.puts "Created #{slots.size} parking slots (
+      #{slots.count { |s| s.size == :small }} small, #{slots.count do |s|
+        s.size == :medium
+      end} medium,
+        #{slots.count do |s|
+          s.size == :large
+        end} large)"
+
     slots
   end
 end
 
 # Run the application if this file is executed directly
 if __FILE__ == $PROGRAM_NAME
-  begin
-    system = ParkingSystem.new
-    system.start
-  rescue StandardError => e
-    puts "An error occurred: #{e.message}"
-    puts e.backtrace
-    exit(1)
-  end
+  system = ParkingSystem.new
+  system.start
 end
