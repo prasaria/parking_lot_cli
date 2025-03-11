@@ -23,7 +23,7 @@ end
 
 # Represents a parking complex with entry points and parking slots
 # Manages parking operations and fee calculations
-class ParkingComplex
+class ParkingComplex # rubocop:disable Metrics/ClassLength
   attr_reader :entry_points, :parking_slots, :repository, :allocator, :calculator, :tracker
 
   # Initialize a new parking complex
@@ -63,7 +63,7 @@ class ParkingComplex
   # @param id [Integer] The ID of the entry point
   # @return [EntryPoint, nil] The entry point, or nil if not found
   def get_entry_point(id)
-    @repository.find(EntryPoint, id)
+    @entry_points.find { |ep| ep.id == id }
   end
 
   # Add a new entry point to the parking complex
@@ -88,12 +88,7 @@ class ParkingComplex
   # @param id [Integer] The ID of the parking slot
   # @return [ParkingSlot, nil] The parking slot, or nil if not found
   def get_parking_slot(id)
-    # Search for the slot in all parking slot types
-    [SmallParkingSlot, MediumParkingSlot, LargeParkingSlot].each do |slot_class|
-      slot = @repository.find(slot_class, id)
-      return slot if slot
-    end
-    nil
+    @parking_slots.find { |ps| ps.id == id }
   end
 
   # Get all available parking slots
@@ -121,6 +116,73 @@ class ParkingComplex
     # Add the parking slot
     @parking_slots << parking_slot
     @repository.add(parking_slot)
+  end
+
+  # Park a vehicle at an entry point
+  # @param vehicle [Vehicle] The vehicle to park
+  # @param entry_point [EntryPoint] The entry point the vehicle is entering from
+  # @return [ParkingTicket, nil] The parking ticket if successful, nil if no slot available
+  # @raise [ArgumentError] If the vehicle or entry point is invalid, or the vehicle is already parked
+  def park(vehicle, entry_point) # rubocop:disable Metrics/MethodLength
+    validate_parking_request(vehicle, entry_point)
+
+    # Find the closest available compatible slot
+    available_slots = @parking_slots.select(&:available?)
+    slot = @allocator.find_slot(vehicle, available_slots, entry_point)
+
+    # If no slot available, return nil
+    return nil if slot.nil?
+
+    # Mark the slot as occupied
+    slot.occupy
+
+    # Create a parking ticket
+    entry_time = Time.now
+    ticket = ParkingTicket.new(vehicle, slot, entry_point, entry_time)
+
+    # Check for continuous rate (vehicle returning within 1 hour)
+    apply_continuous_rate(ticket, vehicle)
+
+    # Track the vehicle entry
+    @tracker.track_vehicle_entry(ticket)
+
+    # Store the ticket in the repository
+    @repository.add(ticket)
+
+    # Return the ticket
+    ticket
+  end
+
+  # Unpark a vehicle
+  # @param vehicle [Vehicle] The vehicle to unpark
+  # @param exit_time [Time] The time the vehicle is exiting (default: current time)
+  # @return [ParkingTicket] The completed parking ticket
+  # @raise [ArgumentError] If the vehicle is invalid or not parked
+  def unpark(vehicle, exit_time = Time.now)
+    # Basic validation
+    raise ArgumentError, 'Vehicle cannot be nil' if vehicle.nil?
+
+    # Check if vehicle is parked
+    raise ArgumentError, "Vehicle #{vehicle.id} is not parked" unless @tracker.currently_parked?(vehicle)
+
+    # Get the active ticket
+    ticket = @tracker.get_active_ticket(vehicle)
+
+    # Set the exit time
+    ticket.exit_time = exit_time
+
+    # Get the parking slot and mark it available
+    slot = ticket.slot
+    slot.vacate
+
+    # Track the vehicle exit
+    @tracker.track_vehicle_exit(ticket)
+
+    # Update the ticket in the repository
+    @repository.add(ticket)
+
+    # Return the completed ticket
+    ticket
   end
 
   private
@@ -181,6 +243,41 @@ class ParkingComplex
 
     raise ArgumentError,
           "Parking slot #{parking_slot.id} has #{parking_slot.distances.size} distances, but there are #{entry_points.size} entry points"
+  end
+
+  # Validate the parking request
+  # @param vehicle [Vehicle] The vehicle to validate
+  # @param entry_point [EntryPoint] The entry point to validate
+  # @raise [ArgumentError] If the vehicle or entry point is invalid, or the vehicle is already parked
+  def validate_parking_request(vehicle, entry_point)
+    # Check vehicle
+    raise ArgumentError, 'Vehicle cannot be nil' if vehicle.nil?
+
+    # Check entry point
+    raise ArgumentError, 'Entry point cannot be nil' if entry_point.nil?
+
+    raise ArgumentError, "Invalid entry point: #{entry_point.inspect}" unless entry_point.is_a?(EntryPoint)
+
+    raise ArgumentError, "Entry point not found in this parking complex: #{entry_point.inspect}" unless @entry_points.include?(entry_point)
+
+    # Check if vehicle is already parked
+    return unless @tracker.currently_parked?(vehicle)
+
+    raise ArgumentError, "Vehicle #{vehicle.id} is already parked"
+  end
+
+  # Apply continuous rate if applicable
+  # @param ticket [ParkingTicket] The new ticket
+  # @param vehicle [Vehicle] The vehicle
+  def apply_continuous_rate(ticket, vehicle)
+    # Check if the vehicle recently exited (within 1 hour)
+    return unless @tracker.recently_exited?(vehicle, Time.now)
+
+    # Get the previous ticket
+    previous_ticket = @tracker.get_previous_ticket(vehicle)
+
+    # Link the tickets for continuous rate
+    ticket.previous_ticket = previous_ticket if previous_ticket
   end
 
   # Store the initial objects in the repository
