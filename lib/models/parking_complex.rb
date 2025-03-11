@@ -156,20 +156,21 @@ class ParkingComplex # rubocop:disable Metrics/ClassLength
   # Unpark a vehicle
   # @param vehicle [Vehicle] The vehicle to unpark
   # @param exit_time [Time] The time the vehicle is exiting (default: current time)
-  # @return [ParkingTicket] The completed parking ticket
+  # @return [ParkingTicket] The completed parking ticket with calculated fee
   # @raise [ArgumentError] If the vehicle is invalid or not parked
   def unpark(vehicle, exit_time = Time.now)
     # Basic validation
-    raise ArgumentError, 'Vehicle cannot be nil' if vehicle.nil?
-
-    # Check if vehicle is parked
-    raise ArgumentError, "Vehicle #{vehicle.id} is not parked" unless @tracker.currently_parked?(vehicle)
+    validate_unparking_request(vehicle, exit_time)
 
     # Get the active ticket
     ticket = @tracker.get_active_ticket(vehicle)
 
     # Set the exit time
     ticket.exit_time = exit_time
+
+    # Calculate the fee
+    fee = calculate_fee(ticket)
+    ticket.fee = fee
 
     # Get the parking slot and mark it available
     slot = ticket.slot
@@ -284,5 +285,60 @@ class ParkingComplex # rubocop:disable Metrics/ClassLength
   def store_initial_objects
     @entry_points.each { |ep| @repository.add(ep) }
     @parking_slots.each { |ps| @repository.add(ps) }
+  end
+
+  # Calculate the parking fee for a ticket
+  # @param ticket [ParkingTicket] The ticket to calculate the fee for
+  # @return [Integer] The calculated fee in pesos
+  def calculate_fee(ticket)
+    # Handle continuous rate
+    return calculate_continuous_rate_fee(ticket) if ticket.previous_ticket
+
+    # Use the fee calculator service
+    @calculator.calculate_fee(ticket)
+  end
+
+  # Calculate the fee with continuous rate
+  # @param ticket [ParkingTicket] The current ticket
+  # @return [Integer] The calculated fee in pesos
+  def calculate_continuous_rate_fee(ticket)
+    previous_ticket = ticket.previous_ticket
+
+    # If previous ticket has no fee (should not happen), calculate it
+    previous_ticket.fee = @calculator.calculate_fee(previous_ticket) if previous_ticket.fee.nil?
+
+    # Create a virtual ticket spanning the entire duration
+    entry_time = previous_ticket.entry_time
+    exit_time = ticket.exit_time
+    slot = ticket.slot
+    vehicle = ticket.vehicle
+    entry_point = ticket.entry_point
+
+    # Create a temporary ticket for fee calculation
+    temp_ticket = ParkingTicket.new(vehicle, slot, entry_point, entry_time)
+    temp_ticket.exit_time = exit_time
+
+    # Calculate the fee for the entire duration
+    @calculator.calculate_fee(temp_ticket)
+  end
+
+  # Validate the unparking request
+  # @param vehicle [Vehicle] The vehicle to validate
+  # @param exit_time [Time] The exit time to validate
+  # @raise [ArgumentError] If the vehicle is invalid or not parked, or exit time is invalid
+  def validate_unparking_request(vehicle, exit_time)
+    # Check vehicle
+    raise ArgumentError, 'Vehicle cannot be nil' if vehicle.nil?
+
+    # Check if vehicle is parked
+    raise ArgumentError, "Vehicle #{vehicle.id} is not parked" unless @tracker.currently_parked?(vehicle)
+
+    # Get the active ticket
+    ticket = @tracker.get_active_ticket(vehicle)
+
+    # Check exit time
+    return unless exit_time < ticket.entry_time
+
+    raise ArgumentError, 'Exit time cannot be before entry time'
   end
 end
