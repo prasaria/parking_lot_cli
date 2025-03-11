@@ -491,4 +491,187 @@ RSpec.describe ParkingComplex do
       end
     end
   end
+
+  describe 'unpark operation' do
+    let(:entry_points) { [EntryPoint.new(0), EntryPoint.new(1), EntryPoint.new(2)] }
+    let(:parking_slots) do
+      [
+        SmallParkingSlot.new(1, [1, 4, 7]),
+        MediumParkingSlot.new(2, [2, 3, 8]),
+        LargeParkingSlot.new(3, [5, 1, 6])
+      ]
+    end
+    let(:complex) { ParkingComplex.new(entry_points, parking_slots) }
+    let(:small_vehicle) { SmallVehicle.new('SV001') }
+    let(:medium_vehicle) { MediumVehicle.new('MV001') }
+    let(:large_vehicle) { LargeVehicle.new('LV001') }
+    let(:entry_time) { Time.new(2023, 6, 10, 10, 0, 0) }
+
+    before do
+      # Mock the current time for consistent testing
+      allow(Time).to receive(:now).and_return(entry_time)
+
+      # Park vehicles in the complex
+      @small_ticket = complex.park(small_vehicle, entry_points[0])
+      @medium_ticket = complex.park(medium_vehicle, entry_points[0])
+      @large_ticket = complex.park(large_vehicle, entry_points[0])
+    end
+
+    describe '#unpark' do
+      it 'returns the completed ticket with exit time' do
+        exit_time = entry_time + (2 * 3600) # 2 hours later
+
+        ticket = complex.unpark(small_vehicle, exit_time)
+
+        expect(ticket).to eq(@small_ticket)
+        expect(ticket.exit_time).to eq(exit_time)
+      end
+
+      it 'marks the slot as available' do
+        exit_time = entry_time + (2 * 3600) # 2 hours later
+        small_slot = @small_ticket.slot
+
+        expect(small_slot.available?).to be false # Initially occupied
+
+        complex.unpark(small_vehicle, exit_time)
+
+        expect(small_slot.available?).to be true # Now available
+      end
+
+      it 'decreases the parked vehicles count' do
+        exit_time = entry_time + (2 * 3600) # 2 hours later
+
+        expect do
+          complex.unpark(small_vehicle, exit_time)
+        end.to change { complex.parked_vehicles_count }.by(-1)
+      end
+
+      it 'calculates the correct fee for a short stay (base rate)' do
+        exit_time = entry_time + (2 * 3600) # 2 hours later
+
+        # For a small slot, expect base rate of 40 pesos
+        ticket = complex.unpark(small_vehicle, exit_time)
+        expect(ticket.fee).to eq(40)
+
+        # For a medium slot, expect base rate of 40 pesos
+        ticket = complex.unpark(medium_vehicle, exit_time)
+        expect(ticket.fee).to eq(40)
+
+        # For a large slot, expect base rate of 40 pesos
+        ticket = complex.unpark(large_vehicle, exit_time)
+        expect(ticket.fee).to eq(40)
+      end
+
+      it 'calculates the correct fee for a stay exceeding the base rate' do
+        # Small vehicle in small slot (4 hours)
+        small_exit_time = entry_time + (4 * 3600)
+        small_ticket = complex.unpark(small_vehicle, small_exit_time)
+        # Base rate (40) + 1 hour at small slot rate (20) = 60 pesos
+        expect(small_ticket.fee).to eq(60)
+
+        # Medium vehicle in medium slot (5 hours)
+        medium_exit_time = entry_time + (5 * 3600)
+        medium_ticket = complex.unpark(medium_vehicle, medium_exit_time)
+        # Base rate (40) + 2 hours at medium slot rate (2 * 60) = 160 pesos
+        expect(medium_ticket.fee).to eq(160)
+
+        # Re-park vehicles for next test
+        allow(Time).to receive(:now).and_return(entry_time + 1) # Ensure new tickets
+        @small_ticket = complex.park(small_vehicle, entry_points[0])
+        @medium_ticket = complex.park(medium_vehicle, entry_points[0])
+
+        # Large vehicle in large slot (6 hours)
+        large_exit_time = entry_time + (6 * 3600)
+        large_ticket = complex.unpark(large_vehicle, large_exit_time)
+        # Base rate (40) + 3 hours at large slot rate (3 * 100) = 340 pesos
+        expect(large_ticket.fee).to eq(340)
+      end
+
+      it 'calculates the correct fee for a long-term stay with daily rate' do
+        # 25 hours in a small slot
+        small_exit_time = entry_time + (25 * 3600)
+        small_ticket = complex.unpark(small_vehicle, small_exit_time)
+        # 1 day (5000) + 1 hour base rate (40) = 5040 pesos
+        expect(small_ticket.fee).to eq(5040)
+
+        # 48 hours in a medium slot
+        medium_exit_time = entry_time + (48 * 3600)
+        medium_ticket = complex.unpark(medium_vehicle, medium_exit_time)
+        # 2 days (2 * 5000) = 10000 pesos
+        expect(medium_ticket.fee).to eq(10_000)
+
+        # Re-park vehicles for next test
+        allow(Time).to receive(:now).and_return(entry_time + 1) # Ensure new tickets
+        @small_ticket = complex.park(small_vehicle, entry_points[0])
+        @medium_ticket = complex.park(medium_vehicle, entry_points[0])
+
+        # 73 hours in a large slot
+        large_exit_time = entry_time + (73 * 3600)
+        large_ticket = complex.unpark(large_vehicle, large_exit_time)
+        # 3 days (3 * 5000) + 1 hour base rate (40) = 15040 pesos
+        expect(large_ticket.fee).to eq(15_040)
+      end
+
+      it 'applies continuous rate for vehicle returning within 1 hour' do
+        # First parking: 2 hours in a small slot
+        first_exit_time = entry_time + (2 * 3600)
+        first_ticket = complex.unpark(small_vehicle, first_exit_time)
+        expect(first_ticket.fee).to eq(40) # Base rate
+
+        # Return within 1 hour
+        return_time = first_exit_time + (30 * 60) # 30 minutes later
+        allow(Time).to receive(:now).and_return(return_time)
+        second_ticket = complex.park(small_vehicle, entry_points[0])
+
+        # Link to previous ticket for continuous rate
+        expect(second_ticket.previous_ticket).to eq(first_ticket)
+
+        # Unpark after 3 more hours
+        second_exit_time = return_time + (3 * 3600)
+        second_ticket = complex.unpark(small_vehicle, second_exit_time)
+
+        # Total time: 2 + 0.5 (gap) + 3 = 5.5 hours (rounds to 6)
+        # Expected fee: Base rate (40) + 3 hours at small slot rate (3 * 20) = 100 pesos
+        expect(second_ticket.fee).to eq(100)
+      end
+
+      it 'calculates separate fees for vehicle returning after 1 hour' do
+        # First parking: 2 hours in a small slot
+        first_exit_time = entry_time + (2 * 3600)
+        first_ticket = complex.unpark(small_vehicle, first_exit_time)
+        expect(first_ticket.fee).to eq(40) # Base rate
+
+        # Return after more than 1 hour
+        return_time = first_exit_time + (70 * 60) # 70 minutes later
+        allow(Time).to receive(:now).and_return(return_time)
+        second_ticket = complex.park(small_vehicle, entry_points[0])
+
+        # No link to previous ticket (not continuous rate)
+        expect(second_ticket.previous_ticket).to be_nil
+
+        # Unpark after 3 more hours
+        second_exit_time = return_time + (3 * 3600)
+        second_ticket = complex.unpark(small_vehicle, second_exit_time)
+
+        # Separate fee calculation for second ticket: 3 hours = base rate (40)
+        expect(second_ticket.fee).to eq(40)
+      end
+
+      context 'with error conditions' do
+        it 'raises an error if the vehicle is nil' do
+          expect { complex.unpark(nil) }.to raise_error(ArgumentError)
+        end
+
+        it 'raises an error if the vehicle is not parked' do
+          non_parked_vehicle = SmallVehicle.new('NOT_PARKED')
+          expect { complex.unpark(non_parked_vehicle) }.to raise_error(ArgumentError)
+        end
+
+        it 'raises an error if exit time is before entry time' do
+          invalid_exit_time = entry_time - (1 * 3600) # 1 hour before entry
+          expect { complex.unpark(small_vehicle, invalid_exit_time) }.to raise_error(ArgumentError)
+        end
+      end
+    end
+  end
 end
