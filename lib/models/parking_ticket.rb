@@ -5,6 +5,9 @@
 class ParkingTicket
   attr_reader :vehicle, :slot, :entry_point, :entry_time, :exit_time
 
+  # Reference to a previous ticket (for continuous rate)
+  attr_accessor :previous_ticket
+
   # Initialize a new parking ticket
   # @param vehicle [Vehicle] The vehicle being parked
   # @param slot [ParkingSlot] The slot where the vehicle is parked
