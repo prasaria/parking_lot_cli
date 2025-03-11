@@ -272,4 +272,223 @@ RSpec.describe ParkingComplex do
       expect { complex.add_parking_slot(invalid_slot) }.to raise_error(ArgumentError)
     end
   end
+
+  describe 'park operation' do
+    let(:entry_points) { [EntryPoint.new(0), EntryPoint.new(1), EntryPoint.new(2)] }
+    let(:parking_slots) do
+      [
+        SmallParkingSlot.new(1, [1, 4, 7]),
+        MediumParkingSlot.new(2, [2, 3, 8]),
+        LargeParkingSlot.new(3, [5, 1, 6])
+      ]
+    end
+    let(:complex) { ParkingComplex.new(entry_points, parking_slots) }
+
+    describe '#park' do
+      context 'with a small vehicle' do
+        let(:small_vehicle) { SmallVehicle.new('SV001') }
+
+        it 'assigns the closest available compatible slot' do
+          # Entry point 0 has distances [1, 2, 5] to the slots
+          # The small slot (id=1) is closest with distance 1
+          ticket = complex.park(small_vehicle, entry_points[0])
+
+          expect(ticket).not_to be_nil
+          expect(ticket.vehicle).to eq(small_vehicle)
+          expect(ticket.slot).to eq(parking_slots[0]) # The small slot
+          expect(ticket.entry_point).to eq(entry_points[0])
+          expect(ticket.exit_time).to be_nil
+        end
+
+        it 'marks the assigned slot as unavailable' do
+          complex.park(small_vehicle, entry_points[0])
+
+          # The small slot should now be unavailable
+          expect(parking_slots[0].available?).to be false
+
+          # Other slots should still be available
+          expect(parking_slots[1].available?).to be true
+          expect(parking_slots[2].available?).to be true
+        end
+
+        it 'increases the parked vehicles count' do
+          expect do
+            complex.park(small_vehicle, entry_points[0])
+          end.to change { complex.parked_vehicles_count }.by(1)
+        end
+
+        it 'tracks the parked vehicle' do
+          ticket = complex.park(small_vehicle, entry_points[0])
+
+          expect(complex.tracker.currently_parked?(small_vehicle)).to be true
+          expect(complex.tracker.get_active_ticket(small_vehicle)).to eq(ticket)
+        end
+
+        it 'selects a different slot if the closest is occupied' do
+          # Park a vehicle in the small slot first
+          another_vehicle = SmallVehicle.new('SV002')
+          complex.park(another_vehicle, entry_points[0])
+
+          # Now park our test vehicle - it should get the medium slot (next closest compatible slot)
+          ticket = complex.park(small_vehicle, entry_points[0])
+
+          expect(ticket.slot).to eq(parking_slots[1]) # The medium slot
+        end
+
+        it 'returns nil if no compatible slot is available' do
+          # Park vehicles in all slots
+          complex.park(SmallVehicle.new('SV002'), entry_points[0])
+          complex.park(MediumVehicle.new('MV001'), entry_points[0])
+          complex.park(LargeVehicle.new('LV001'), entry_points[0])
+
+          # Try to park another vehicle
+          ticket = complex.park(small_vehicle, entry_points[0])
+
+          expect(ticket).to be_nil
+        end
+      end
+
+      context 'with a medium vehicle' do
+        let(:medium_vehicle) { MediumVehicle.new('MV001') }
+
+        it 'assigns a medium or large slot' do
+          # Entry point 0 has distances [2, 5] to the medium and large slots
+          # The medium slot (id=2) is closest with distance 2
+          ticket = complex.park(medium_vehicle, entry_points[0])
+
+          expect(ticket).not_to be_nil
+          expect(ticket.vehicle).to eq(medium_vehicle)
+          expect(ticket.slot).to eq(parking_slots[1]) # The medium slot
+        end
+
+        it 'does not assign a small slot' do
+          # Make the medium and large slots unavailable
+          parking_slots[1].occupy
+          parking_slots[2].occupy
+
+          # Try to park a medium vehicle
+          ticket = complex.park(medium_vehicle, entry_points[0])
+
+          # Should not get a ticket since no compatible slot is available
+          expect(ticket).to be_nil
+
+          # The small slot should still be available
+          expect(parking_slots[0].available?).to be true
+        end
+      end
+
+      context 'with a large vehicle' do
+        let(:large_vehicle) { LargeVehicle.new('LV001') }
+
+        it 'assigns only a large slot' do
+          # Entry point 0 has distance 5 to the large slot
+          ticket = complex.park(large_vehicle, entry_points[0])
+
+          expect(ticket).not_to be_nil
+          expect(ticket.vehicle).to eq(large_vehicle)
+          expect(ticket.slot).to eq(parking_slots[2]) # The large slot
+        end
+
+        it 'does not assign a small or medium slot' do
+          # Make the large slot unavailable
+          parking_slots[2].occupy
+
+          # Try to park a large vehicle
+          ticket = complex.park(large_vehicle, entry_points[0])
+
+          # Should not get a ticket since no compatible slot is available
+          expect(ticket).to be_nil
+
+          # The small and medium slots should still be available
+          expect(parking_slots[0].available?).to be true
+          expect(parking_slots[1].available?).to be true
+        end
+      end
+
+      context 'with different entry points' do
+        let(:small_vehicle) { SmallVehicle.new('SV001') }
+
+        it 'assigns the closest slot based on the entry point' do
+          # Entry point 1 has distances [4, 3, 1] to the slots
+          # The large slot (id=3) is closest with distance 1
+          ticket = complex.park(small_vehicle, entry_points[1])
+
+          expect(ticket.slot).to eq(parking_slots[2]) # The large slot
+
+          # Entry point 2 has distances [7, 8, 6] to the slots
+          # The large slot (id=3) is closest with distance 6
+          another_vehicle = SmallVehicle.new('SV002')
+          ticket = complex.park(another_vehicle, entry_points[2])
+
+          # The large slot is now occupied, so it should get the small slot (distance 7)
+          expect(ticket.slot).to eq(parking_slots[0]) # The small slot
+        end
+      end
+
+      context 'with error conditions' do
+        let(:small_vehicle) { SmallVehicle.new('SV001') }
+
+        it 'raises an error if the vehicle is nil' do
+          expect { complex.park(nil, entry_points[0]) }.to raise_error(ArgumentError)
+        end
+
+        it 'raises an error if the entry point is nil' do
+          expect { complex.park(small_vehicle, nil) }.to raise_error(ArgumentError)
+        end
+
+        it 'raises an error if the entry point is invalid' do
+          invalid_entry_point = 'not an entry point'
+          expect { complex.park(small_vehicle, invalid_entry_point) }.to raise_error(ArgumentError)
+        end
+
+        it 'raises an error if the vehicle is already parked' do
+          # Park the vehicle once
+          complex.park(small_vehicle, entry_points[0])
+
+          # Try to park it again
+          expect { complex.park(small_vehicle, entry_points[0]) }.to raise_error(ArgumentError)
+        end
+      end
+
+      context 'with continuous rate scenario' do
+        let(:small_vehicle) { SmallVehicle.new('SV001') }
+
+        it 'applies continuous rate for vehicle returning within 1 hour' do
+          # Park the vehicle
+          first_ticket = complex.park(small_vehicle, entry_points[0])
+
+          # Unpark the vehicle
+          exit_time = Time.now + (2 * 3600) # 2 hours later
+          complex.unpark(small_vehicle, exit_time)
+
+          # Park the vehicle again within 1 hour
+          return_time = exit_time + (30 * 60) # 30 minutes after exit
+          allow(Time).to receive(:now).and_return(return_time)
+
+          second_ticket = complex.park(small_vehicle, entry_points[0])
+
+          # The second ticket should reference the first ticket for continuous rate
+          expect(second_ticket.previous_ticket).to eq(first_ticket)
+        end
+
+        it 'does not apply continuous rate for vehicle returning after 1 hour' do
+          # Park the vehicle
+          _first_ticket = complex.park(small_vehicle, entry_points[0])
+
+          # Unpark the vehicle
+          exit_time = Time.now + (2 * 3600) # 2 hours later
+          complex.unpark(small_vehicle, exit_time)
+
+          # Park the vehicle again after more than 1 hour
+          return_time = exit_time + (65 * 60) # 65 minutes after exit
+          allow(Time).to receive(:now).and_return(return_time)
+
+          second_ticket = complex.park(small_vehicle, entry_points[0])
+
+          # The second ticket should not reference the first ticket
+          expect(second_ticket.previous_ticket).to be_nil
+        end
+      end
+    end
+  end
 end
