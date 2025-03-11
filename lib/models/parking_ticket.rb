@@ -5,6 +5,9 @@
 class ParkingTicket
   attr_reader :vehicle, :slot, :entry_point, :entry_time, :exit_time
 
+  # The calculated fee for this ticket
+  attr_accessor :fee
+
   # Reference to a previous ticket (for continuous rate)
   attr_accessor :previous_ticket
 
