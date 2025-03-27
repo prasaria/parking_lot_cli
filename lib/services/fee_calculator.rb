@@ -8,7 +8,7 @@
 #   * Large slot (LP): 100 pesos/hour
 # - Flat rate of 5000 pesos per 24-hour chunk for long-term parking
 # - Continuous rate for vehicles returning within 1 hour of exit
-class FeeCalculator # rubocop:disable Metrics/ClassLength
+class FeeCalculator
   # Base flat rate for the first 3 hours (all slot types)
   BASE_RATE = 40
 
@@ -57,7 +57,7 @@ class FeeCalculator # rubocop:disable Metrics/ClassLength
   end
 
   # Calculate the fee with continuous rate for one or more tickets
-  # @param tickets [ParkingTicket, Array<ParkingTicket>] The tickets to calculate the fee for
+  # @param tickets_args [ParkingTicket, Array<ParkingTicket>] The tickets to calculate the fee for
   # @return [Integer] The calculated fee in pesos
   # @raise [ArgumentError] If tickets is nil or empty
   def calculate_fee_with_continuous_rate(*tickets_args)
@@ -166,112 +166,38 @@ class FeeCalculator # rubocop:disable Metrics/ClassLength
   # @param segment [Array<ParkingTicket>] The segment of tickets
   # @return [Integer] The calculated fee
   def calculate_segment_fee(segment)
-    # Create a timeline of slot changes with durations
-    timeline = create_timeline(segment)
+    # Calculate total actual parking duration (excluding gaps)
+    total_parking_hours = calculate_total_parking_hours(segment)
 
-    # Calculate total duration (including gaps)
-    total_hours = calculate_total_hours(timeline)
+    # Get the last ticket in the segment
+    last_ticket = segment.last
 
-    # Calculate days and remainder hours
-    days, remainder_hours = total_hours.divmod(HOURS_PER_DAY)
+    # Calculate days and remainder hours based on actual parking time
+    days, remainder_hours = total_parking_hours.divmod(HOURS_PER_DAY)
 
     # If there are complete days, apply the daily rate
     daily_fee = days * DAILY_RATE
 
-    # Calculate fee for remainder hours with mixed slot types
+    # Calculate fee for remainder hours using the latest slot
     remainder_fee = if days.positive?
-                      calculate_remainder_fee(remainder_hours, segment.last.slot)
+                      calculate_remainder_fee(remainder_hours, last_ticket.slot)
                     else
-                      calculate_mixed_slot_fee(timeline, total_hours)
+                      calculate_hourly_fee(total_parking_hours, last_ticket.slot)
                     end
 
     daily_fee + remainder_fee
   end
 
-  # Create a timeline of slot changes with durations
+  # Calculate total parking hours for a segment (excluding gaps)
   # @param segment [Array<ParkingTicket>] The segment of tickets
-  # @return [Array<Hash>] Array of duration and slot pairs
-  def create_timeline(segment) # rubocop:disable Metrics/AbcSize
-    timeline = []
-
-    segment.each_with_index do |ticket, index|
-      # Add actual parking duration
-      actual_duration = (ticket.exit_time - ticket.entry_time) / 3600.0
-      timeline << { duration: actual_duration, slot: ticket.slot }
-
-      # Add gap to next ticket if not the last ticket
-      next unless index < segment.size - 1
-
-      next_ticket = segment[index + 1]
-      gap_duration = (next_ticket.entry_time - ticket.exit_time) / 3600.0
-      timeline << { duration: gap_duration, slot: nil } if gap_duration.positive?
+  # @return [Integer] Total parking hours, rounded up
+  def calculate_total_parking_hours(segment)
+    # Sum the actual parking duration for each ticket
+    total_duration = segment.sum do |ticket|
+      (ticket.exit_time - ticket.entry_time) / 3600.0
     end
 
-    timeline
-  end
-
-  # Calculate total hours from a timeline
-  # @param timeline [Array<Hash>] The timeline
-  # @return [Integer] Total hours, rounded up
-  def calculate_total_hours(timeline)
-    total_duration = timeline.sum { |item| item[:duration] }
+    # Round up to the nearest hour
     total_duration.ceil
-  end
-
-  # Calculate fee for a mixed set of slot types for a duration
-  # @param timeline [Array<Hash>] The timeline of slot changes
-  # @param total_hours [Integer] Total duration in hours
-  # @return [Integer] The calculated fee
-  def calculate_mixed_slot_fee(timeline, total_hours)
-    # If total hours is within base rate, just return base rate
-    return BASE_RATE if total_hours <= BASE_RATE_HOURS
-
-    # For durations exceeding base rate, we need to calculate mixed rates
-    excess_hours = total_hours - BASE_RATE_HOURS
-
-    # Create a prioritized list of slot hours (larger slots take precedence)
-    slot_hours = calculate_slot_hours(timeline)
-
-    # Calculate the excess fee based on prioritized slot hours
-    excess_fee = calculate_excess_fee(slot_hours, excess_hours)
-
-    # Return base rate plus excess fee
-    BASE_RATE + excess_fee
-  end
-
-  # Calculate hours per slot type from a timeline
-  # @param timeline [Array<Hash>] The timeline
-  # @return [Hash] Hours per slot size
-  def calculate_slot_hours(timeline)
-    # Initial slot hours hash
-    slot_hours = { small: 0, medium: 0, large: 0 }
-
-    # Sum up hours by slot type
-    timeline.each do |item|
-      next if item[:slot].nil?
-
-      slot_hours[item[:slot].size] += item[:duration]
-    end
-
-    slot_hours
-  end
-
-  # Calculate excess fee based on prioritized slot hours
-  # @param slot_hours [Hash] Hours per slot size
-  # @param excess_hours [Integer] Excess hours beyond base rate
-  # @return [Integer] The excess fee
-  def calculate_excess_fee(slot_hours, excess_hours)
-    remaining_hours = excess_hours
-    total_fee = 0
-
-    # Process slots in order of highest to lowest rate
-    %i[large medium small].each do |size|
-      hours = [slot_hours[size].ceil, remaining_hours].min
-      total_fee += hours * HOURLY_RATES[size]
-      remaining_hours -= hours
-      break if remaining_hours <= 0
-    end
-
-    total_fee
   end
 end
