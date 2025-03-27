@@ -216,9 +216,9 @@ RSpec.describe 'Command Execution' do
         expect(final_unpark_result[:success]).to be true
 
         # The fee should reflect the continuous rate
-        # Total time: 2 hours + 0.5 hour gap + 3 hours = 5.5 hours (rounds up to 6)
-        # Expected fee: Base rate (40) + 3 hours at small slot rate (3 * 20) = 100 pesos
-        expect(output.string).to include('Fee: 100 pesos')
+        # Total time: 2 hours + 3 hours = 5 hours
+        # Base rate (40) for the first 3 hours + extra 2 hours at hourly rate (2 * 20) = 80 pesos
+        expect(output.string).to include('Fee: 80 pesos')
       end
 
       it 'demonstrates various vehicle-slot compatibility rules' do

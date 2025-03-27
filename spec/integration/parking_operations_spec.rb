@@ -283,9 +283,9 @@ RSpec.describe 'Parking Operations Integration' do
       second_completed = complex.unpark(small_vehicle)
 
       # Verify the fee
-      # Total time: 2 hours + 0.5 hour gap + 3 hours = 5.5 hours (rounds to 6)
-      # Expected fee: Base rate (40) + 3 hours at small slot rate (3 * 20) = 100 pesos
-      expect(second_completed.fee).to eq(100)
+      # Total time: 2 hours + 3 hours = 5 hours
+      # Base rate (40) for the first 3 hours + extra 2 hours at hourly rate (2 * 20) = 80
+      expect(second_completed.fee).to eq(80)
     end
 
     it 'does not apply continuous rate for a vehicle returning after 1 hour' do

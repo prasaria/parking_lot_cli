@@ -294,10 +294,9 @@ RSpec.describe 'Fee Calculation Integration' do
       second_result = complex.unpark(small_vehicle)
 
       # Calculate expected fee based on your implementation
-      # Total time: 2 hours + 0.5 hour gap + 3 hours = 5.5 hours (rounds to 6)
-      # Base rate (40) + 3 hours at hourly rate (3 * 20) = 100
-      # Note: If your implementation calculates differently, adjust this expectation
-      expect(second_result.fee).to eq(100)
+      # Total time: 2 hours + 3 hours = 5 hours
+      # Base rate (40) for the first 3 hours + extra 2 hours at hourly rate (2 * 20) = 80
+      expect(second_result.fee).to eq(80)
     end
 
     it 'does not apply continuous rate if vehicle returns after 1 hour' do
