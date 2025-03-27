@@ -188,6 +188,41 @@ class ParkingComplex # rubocop:disable Metrics/ClassLength
 
   private
 
+  # Calculate the fee for a ticket, considering continuous rate if applicable
+  # @param ticket [ParkingTicket] The ticket to calculate the fee for
+  # @return [Integer] The calculated fee
+  def calculate_fee(ticket)
+    # If the ticket has a previous ticket (continuous rate), use the dedicated method
+    return calculate_continuous_rate_fee(ticket) if ticket.previous_ticket
+
+    # Otherwise, use the standard fee calculation
+    @calculator.calculate_fee(ticket)
+  end
+
+  # Calculate fee with continuous rate
+  # @param ticket [ParkingTicket] The current ticket
+  # @return [Integer] The calculated fee
+  def calculate_continuous_rate_fee(ticket)
+    previous_ticket = ticket.previous_ticket
+
+    # Use the improved calculate_fee_with_continuous_rate method
+    @calculator.calculate_fee_with_continuous_rate(previous_ticket, ticket)
+  end
+
+  # Apply continuous rate if applicable
+  # @param ticket [ParkingTicket] The new ticket
+  # @param vehicle [Vehicle] The vehicle
+  def apply_continuous_rate(ticket, vehicle)
+    # Check if the vehicle recently exited (within 1 hour)
+    return unless @tracker.recently_exited?(vehicle, Time.now)
+
+    # Get the previous ticket
+    previous_ticket = @tracker.get_previous_ticket(vehicle)
+
+    # Link the tickets for continuous rate
+    ticket.previous_ticket = previous_ticket if previous_ticket
+  end
+
   # Validate the entry points
   # @param entry_points [Array<EntryPoint>] The entry points to validate
   # @raise [ArgumentError] If the entry points are invalid
@@ -267,61 +302,6 @@ class ParkingComplex # rubocop:disable Metrics/ClassLength
     raise ArgumentError, "Vehicle #{vehicle.id} is already parked"
   end
 
-  # Apply continuous rate if applicable
-  # @param ticket [ParkingTicket] The new ticket
-  # @param vehicle [Vehicle] The vehicle
-  def apply_continuous_rate(ticket, vehicle)
-    # Check if the vehicle recently exited (within 1 hour)
-    return unless @tracker.recently_exited?(vehicle, Time.now)
-
-    # Get the previous ticket
-    previous_ticket = @tracker.get_previous_ticket(vehicle)
-
-    # Link the tickets for continuous rate
-    ticket.previous_ticket = previous_ticket if previous_ticket
-  end
-
-  # Store the initial objects in the repository
-  def store_initial_objects
-    @entry_points.each { |ep| @repository.add(ep) }
-    @parking_slots.each { |ps| @repository.add(ps) }
-  end
-
-  # Calculate the parking fee for a ticket
-  # @param ticket [ParkingTicket] The ticket to calculate the fee for
-  # @return [Integer] The calculated fee in pesos
-  def calculate_fee(ticket)
-    # Handle continuous rate
-    return calculate_continuous_rate_fee(ticket) if ticket.previous_ticket
-
-    # Use the fee calculator service
-    @calculator.calculate_fee(ticket)
-  end
-
-  # Calculate the fee with continuous rate
-  # @param ticket [ParkingTicket] The current ticket
-  # @return [Integer] The calculated fee in pesos
-  def calculate_continuous_rate_fee(ticket)
-    previous_ticket = ticket.previous_ticket
-
-    # If previous ticket has no fee (should not happen), calculate it
-    previous_ticket.fee = @calculator.calculate_fee(previous_ticket) if previous_ticket.fee.nil?
-
-    # Create a virtual ticket spanning the entire duration
-    entry_time = previous_ticket.entry_time
-    exit_time = ticket.exit_time
-    slot = ticket.slot
-    vehicle = ticket.vehicle
-    entry_point = ticket.entry_point
-
-    # Create a temporary ticket for fee calculation
-    temp_ticket = ParkingTicket.new(vehicle, slot, entry_point, entry_time)
-    temp_ticket.exit_time = exit_time
-
-    # Calculate the fee for the entire duration
-    @calculator.calculate_fee(temp_ticket)
-  end
-
   # Validate the unparking request
   # @param vehicle [Vehicle] The vehicle to validate
   # @param exit_time [Time] The exit time to validate
@@ -340,5 +320,11 @@ class ParkingComplex # rubocop:disable Metrics/ClassLength
     return unless exit_time < ticket.entry_time
 
     raise ArgumentError, 'Exit time cannot be before entry time'
+  end
+
+  # Store the initial objects in the repository
+  def store_initial_objects
+    @entry_points.each { |ep| @repository.add(ep) }
+    @parking_slots.each { |ps| @repository.add(ps) }
   end
 end

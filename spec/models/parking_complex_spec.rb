@@ -630,9 +630,9 @@ RSpec.describe ParkingComplex do
         second_exit_time = return_time + (3 * 3600)
         second_ticket = complex.unpark(small_vehicle, second_exit_time)
 
-        # Total time: 2 + 0.5 (gap) + 3 = 5.5 hours (rounds to 6)
-        # Expected fee: Base rate (40) + 3 hours at small slot rate (3 * 20) = 100 pesos
-        expect(second_ticket.fee).to eq(100)
+        # Total time: 2 + 3 = 5 hours
+        # Expected fee: Base rate for first 3 hours (40) + extra 2 hours at small slot rate (2 * 20) = 80 pesos
+        expect(second_ticket.fee).to eq(80)
       end
 
       it 'calculates separate fees for vehicle returning after 1 hour' do
